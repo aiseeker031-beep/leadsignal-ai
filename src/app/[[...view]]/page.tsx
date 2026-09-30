@@ -1,0 +1,1 @@
+import Workspace from '@/components/workspace';export default async function Page({params}:{params:Promise<{view?:string[]}>}){return <Workspace view={(await params).view?.[0]||'dashboard'}/>}
