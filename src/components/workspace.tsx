@@ -143,6 +143,7 @@ export default function Workspace({view}:{view:string}){
       setFailure(true);
       setNotice((err as Error).message);
       setAuthBusy(false);
+      setAuth(true);
     }
   }
 
@@ -307,6 +308,12 @@ export default function Workspace({view}:{view:string}){
             </button>
             <h2>Welcome to LeadSignal</h2>
             <p>Sign in to your private workspace to sync your CRM across devices.</p>
+
+            {notice&&(
+              <div className={'notice '+(failure?'error':'success')} role="status" style={{margin:'12px 0'}}>
+                {notice}
+              </div>
+            )}
 
             <button
               type="button"

@@ -111,8 +111,17 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
       const c=await db();
 
       if(b.mode==='oauth'){
+        const origin=proxyOrigin(req);
+        const supabaseUrl=process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL||'';
+        const isVerdentBackend=supabaseUrl.includes('verdent.ai');
+        const isLocal=origin.includes('localhost')||origin.includes('127.0.0.1');
+
+        if(isVerdentBackend && !isLocal){
+          throw new AppError('Google OAuth on your deployed Vercel domain requires your own Supabase project (from supabase.com). The current sandbox backend (verdent.ai) restricts OAuth redirects to http://localhost:3000. Please sign in with Email & Password, or configure your production Supabase project.',400,'invalid_redirect_to');
+        }
+
         const next=b.next||'/contacts';
-        const redirectTarget=`${proxyOrigin(req)}/auth/callback?next=${encodeURIComponent(next)}`;
+        const redirectTarget=`${origin}/auth/callback?next=${encodeURIComponent(next)}`;
         const r=await c.auth.signInWithOAuth({
           provider:'google',
           options:{
