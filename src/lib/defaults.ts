@@ -7,6 +7,6 @@ export const BUILTIN_AI={
  model:process.env.DEFAULT_AI_MODEL||'gemini-3.6-flash'};
 export const BUILTIN_MCP={
  url:process.env.DEFAULT_MCP_URL||'https://connect.composio.dev/mcp',
- key:process.env.DEFAULT_MCP_KEY||'ck_rV-A5mEVj-udtkrLhTyi'};
+ key:process.env.DEFAULT_MCP_KEY||''};
 export function aiStatus(){return {ai:true,model:BUILTIN_AI.model}}
 export function apiBase(value:string){const u=new URL(value);u.pathname=u.pathname.replace(/\/$/,'');if(!u.pathname||u.pathname==='/')u.pathname='/v1';return u;}
