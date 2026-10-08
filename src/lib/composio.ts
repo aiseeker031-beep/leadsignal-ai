@@ -1,15 +1,18 @@
-import 'server-only';import {Composio} from '@composio/core';import {Client} from '@modelcontextprotocol/sdk/client/index.js';import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';import {AppError,safeEndpoint,type Settings} from './server';
-export type Tool={name:string;description:string;schema:Record<string,unknown>;version?:string;toolkit?:string;readonly?:boolean};
-export async function connector(s:Settings,userId:string){
- const useDefault=!!s.default_mcp_access&&!!process.env.DEFAULT_MCP_URL;
- if(useDefault||s.mcp_url){const url=await safeEndpoint(useDefault?process.env.DEFAULT_MCP_URL!:s.mcp_url!);const client=new Client({name:'leadsignal-ai',version:'1.0.0'});await client.connect(new StreamableHTTPClientTransport(url,{fetch:(input,init)=>fetch(input,{...init,signal:AbortSignal.any([AbortSignal.timeout(20000),...(init?.signal?[init.signal]:[])])}),requestInit:{redirect:'error',headers:useDefault?{'x-consumer-api-key':process.env.DEFAULT_MCP_KEY!}:{}}}));return {async list(){const out:Tool[]=[];let cursor:string|undefined;do{const r=await client.listTools({cursor});out.push(...r.tools.map(t=>({name:t.name,description:t.description||'',schema:t.inputSchema,readonly:t.annotations?.readOnlyHint===true})));cursor=r.nextCursor}while(cursor);return out},async accounts(){return [] as {id:string;toolkit:string;status:string}[]},async run(t:Tool,args:Record<string,unknown>){const r=await client.callTool({name:t.name,arguments:args});if(r.isError)throw new AppError('Connected tool failed. Review its configuration.',502);return r},close:()=>client.close()}}
- if(!s.composio_key)throw new AppError('Connect Composio in Settings to activate live tools.',503,'not_configured');const c=new Composio({apiKey:s.composio_key});return {async list(){const raw=await c.tools.getRawComposioTools(s.read_tools?.length?{tools:s.read_tools}:{toolkits:(await c.connectedAccounts.list({userIds:[userId],statuses:['ACTIVE']})).items.map(a=>a.toolkit.slug),limit:100});return raw.map(t=>({name:t.slug,description:t.description||'',schema:t.inputParameters as Record<string,unknown>,version:t.version,toolkit:t.toolkit?.slug,readonly:false}))},async accounts(){const out:{id:string;toolkit:string;status:string}[]=[];let cursor:string|undefined;do{const r=await c.connectedAccounts.list({userIds:[userId],cursor,limit:100});out.push(...r.items.map(a=>({id:a.id,toolkit:a.toolkit.slug,status:a.status})));cursor=r.nextCursor||undefined}while(cursor);return out},async run(t:Tool,args:Record<string,unknown>){const r=await c.tools.execute(t.name,{userId,version:t.version!,arguments:args});if(!r.successful)throw new AppError('Composio tool execution failed. Check connection and arguments.',502);return r.data},async close(){}};
-}
-export async function getTool(s:Settings,userId:string,name:string){if(s.composio_key&&!s.mcp_url&&!s.default_mcp_access){const c=new Composio({apiKey:s.composio_key});const t=await c.tools.getRawComposioToolBySlug(name);return {name:t.slug,description:t.description||'',schema:t.inputParameters as Record<string,unknown>,version:t.version,toolkit:t.toolkit?.slug} satisfies Tool}const c=await connector(s,userId);try{const t=(await c.list()).find(t=>t.name===name);if(!t)throw new AppError('Tool is unsupported by this connection.',422,'unsupported');return t}finally{await c.close()}}
+import 'server-only';import {Client} from '@modelcontextprotocol/sdk/client/index.js';import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';import {AppError} from './server';import {BUILTIN_MCP} from './defaults';
+export type Tool={name:string;description:string;schema:Record<string,unknown>;readonly?:boolean};
+// Single platform-level MCP connection (built-in Composio server).
+export async function connector(){
+ if(!BUILTIN_MCP.url||!BUILTIN_MCP.key)throw new AppError('The built-in tool server is not configured.',503,'not_configured');
+ const url=new URL(BUILTIN_MCP.url);
+ const client=new Client({name:'leadsignal-crm',version:'1.0.0'});
+ await client.connect(new StreamableHTTPClientTransport(url,{fetch:(input,init)=>fetch(input,{...init,signal:AbortSignal.any([AbortSignal.timeout(20000),...(init?.signal?[init.signal]:[])])}),requestInit:{redirect:'error',headers:{'x-consumer-api-key':BUILTIN_MCP.key}}}));
+ return {async list(){const out:Tool[]=[];let cursor:string|undefined;do{const r=await client.listTools({cursor});out.push(...r.tools.map(t=>({name:t.name,description:t.description||'',schema:t.inputSchema,readonly:t.annotations?.readOnlyHint===true})));cursor=r.nextCursor}while(cursor);return out},
+ async run(t:Tool,args:Record<string,unknown>){const r=await client.callTool({name:t.name,arguments:args});if(r.isError)throw new AppError('Connected tool failed. Review its configuration.',502);return r},
+ close:()=>client.close()}}
 let defaultProbe:{until:number;result:Promise<boolean>}|undefined;
 export async function defaultMcpReachable(){
- if(!process.env.DEFAULT_MCP_URL||!process.env.DEFAULT_MCP_KEY)return false;
+ if(!BUILTIN_MCP.url||!BUILTIN_MCP.key)return false;
  if(defaultProbe&&defaultProbe.until>Date.now())return defaultProbe.result;
- const result=(async()=>{let c:Awaited<ReturnType<typeof connector>>|undefined;try{c=await connector({default_mcp_access:true},'server-health');return (await c.list()).length>0}catch{return false}finally{await c?.close().catch(()=>{})}})();
+ const result=(async()=>{let c:Awaited<ReturnType<typeof connector>>|undefined;try{c=await connector();return (await c.list()).length>0}catch{return false}finally{await c?.close().catch(()=>{})}})();
  defaultProbe={until:Date.now()+300000,result};return result;
 }
