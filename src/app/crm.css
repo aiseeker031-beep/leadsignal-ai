@@ -214,3 +214,7 @@
 .start-conv select{width:auto}
 .thread-head a{color:inherit}
 .thread-head a:hover strong{text-decoration:underline}
+
+.google-btn{width:100%;justify-content:center;display:inline-flex;align-items:center;gap:9px;margin-top:6px}
+.auth-divider{display:flex;align-items:center;gap:10px;margin:16px 0;font-size:11px;color:#8a9781;letter-spacing:.5px;text-transform:uppercase}
+.auth-divider:before,.auth-divider:after{content:'';flex:1;height:1px;background:var(--border)}
