@@ -27,12 +27,14 @@ export type SubAccount={id:string;name:string;plan:string;domain:string;status:'
 export type Plan={id:string;name:string;price:number;features:string;subAccounts:number};
 export type Branding={name:string;tagline:string;supportEmail:string;color:string;domain:string;logoText:string};
 
-export type DB={contacts:Contact[];pipelines:Pipeline[];opportunities:Opportunity[];funnels:Funnel[];workflows:Workflow[];conversations:Conversation[];calendars:CalendarDef[];appointments:Appointment[];reviews:Review[];invoices:Invoice[];products:Product[];orderForms:OrderForm[];courses:Course[];communities:Community[];subAccounts:SubAccount[];plans:Plan[];branding:Branding;fieldDefs:{id:string;name:string;type:string}[];blasts:{id:string;name:string;channel:string;audience:string;sent:number;opens:number;clicks:number;at:string}[];aiEmployees?:Row};
+export type DB={contacts:Contact[];pipelines:Pipeline[];opportunities:Opportunity[];funnels:Funnel[];workflows:Workflow[];conversations:Conversation[];calendars:CalendarDef[];appointments:Appointment[];reviews:Review[];invoices:Invoice[];products:Product[];orderForms:OrderForm[];courses:Course[];communities:Community[];subAccounts:SubAccount[];plans:Plan[];branding:Branding;fieldDefs:{id:string;name:string;type:string}[];blasts:{id:string;name:string;channel:string;audience:string;subject?:string;body?:string;sent:number;opens:number;clicks:number;at:string}[];aiEmployees?:Row};
 
 // Structural defaults applied to every new workspace. These are configuration,
 // not demo data — all lists start empty until you create real records.
 export function emptyDoc():DB{
- return {contacts:[],fieldDefs:[],pipelines:[{id:'p-sales',name:'Sales Pipeline',stages:['New Lead','Contacted','Qualified','Proposal','Negotiation','Won','Lost']}],opportunities:[],funnels:[],workflows:[],conversations:[],calendars:[],appointments:[],reviews:[],invoices:[],products:[],orderForms:[],courses:[],communities:[],subAccounts:[],plans:[],
+ return {contacts:[],fieldDefs:[],pipelines:[{id:'p-sales',name:'Sales Pipeline',stages:['New Lead','Contacted','Qualified','Proposal','Negotiation','Won','Lost']}],opportunities:[],funnels:[],workflows:[],conversations:[],
+  calendars:[{id:'cal-discovery',name:'Discovery Call',duration:30,buffer:10,days:[1,2,3,4,5],hours:'9:00am – 5:00pm',slug:'discovery',reminders:true,color:'#1f2837'}],
+  appointments:[],reviews:[],invoices:[],products:[],orderForms:[],courses:[],communities:[],subAccounts:[],plans:[],
   branding:{name:'My Agency',tagline:'Growth, on autopilot.',supportEmail:'',color:'#1f2837',domain:'',logoText:'MA'},
   blasts:[],aiEmployees:{bot:{name:'Assistant',tone:'Friendly & concise',trained:'Pricing, services, hours, booking',active:true,greeting:'Hi! How can we help you today?'},voice:{name:'Receptionist',active:false,language:'English (US)',forward:''},writer:{tone:'Professional',audience:''},responder:{active:false,positive:'Thank you for the review!',negative:'We\u2019re sorry — let\u2019s make it right.'},calls:[]}};
 }
@@ -47,30 +49,40 @@ export const daysAhead=(d:number,hour=10)=>{const x=new Date(Date.now()+d*864e5)
 // Shared store: one fetch, many subscribers, debounced persistence.
 let doc:DB|null=null;let userEmail='';let loadState:'idle'|'loading'|'ready'|'error'='idle';let loadError='';
 const subs=new Set<()=>void>();
-let saving=false;let dirtyAfterSave=false;
+let saving=false;let dirtyAfterSave=false;let persistTimer:any=null;
 function emit(){subs.forEach(f=>f())}
+export function resetCrmStore(){doc=null;userEmail='';loadState='idle';loadError='';emit()}
 async function fetchDoc(){
  loadState='loading';emit();
  try{const r=await fetch('/api/crm',{cache:'no-store'});const j=await r.json();
   if(!r.ok)throw new Error(j.error||'Could not load your workspace.');
   doc=normalize(j.doc);userEmail=String(j.user?.email||'');loadState='ready';loadError=''}
- catch(e){loadState='error';loadError=(e as Error).message}
+ catch(e){
+  loadState='error';
+  loadError=(e as Error).message;
+  if(!doc)doc=emptyDoc();
+ }
  emit();
 }
-function persist(){
- if(!doc)return;
+function runPersist(){
+ if(!doc||!userEmail)return;
  if(saving){dirtyAfterSave=true;return}
  saving=true;
- (async()=>{try{await fetch('/api/crm',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(doc)});loadError=''}catch(e){loadError=(e as Error).message}finally{saving=false;if(dirtyAfterSave){dirtyAfterSave=false;persist()}emit()}})();
+ (async()=>{try{const r=await fetch('/api/crm',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(doc)});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Failed to save workspace.');}loadError=''}catch(e){loadError=(e as Error).message}finally{saving=false;if(dirtyAfterSave){dirtyAfterSave=false;runPersist()}emit()}})();
+}
+function persist(){
+ if(!doc||!userEmail)return;
+ if(persistTimer)clearTimeout(persistTimer);
+ persistTimer=setTimeout(runPersist,250);
 }
 export function useCrm(){
  const [,force]=useState(0);const started=useRef(false);
  useEffect(()=>{const fn=()=>force(x=>x+1);subs.add(fn);
   if(!started.current&&!doc&&loadState==='idle'){started.current=true;fetchDoc()}
-  else if(loadState==='error'&&!doc&&!started.current){started.current=true;fetchDoc()}
+  else if(loadState==='error'&&!started.current){started.current=true;fetchDoc()}
   return()=>{subs.delete(fn)}},[]);
- const set=useCallback((fn:(d:DB)=>void)=>{if(!doc)return;fn(doc);persist();emit()},[]);
- return {db:doc||emptyDoc(),loaded:loadState==='ready'&&!!doc,loading:loadState==='loading'||loadState==='idle',error:loadError,set,reload:fetchDoc,saving,userEmail};
+ const set=useCallback((fn:(d:DB)=>void)=>{if(!doc)doc=emptyDoc();fn(doc);persist();emit()},[]);
+ return {db:doc||emptyDoc(),loaded:!!doc&&loadState!=='loading',loading:loadState==='loading',error:loadError,set,reload:fetchDoc,saving,userEmail};
 }
 
 export const contactName=(c?:Contact|Row)=>c?`${c.firstName} ${c.lastName}`.trim()||'Unnamed':'Unknown';

@@ -2,8 +2,8 @@ import 'server-only';
 import {BUILTIN_AI,apiBase} from './defaults';
 import {createServerClient} from '@supabase/ssr';import {cookies} from 'next/headers';
 export class AppError extends Error{constructor(message:string,public status=400,public state='failed'){super(message)}}
-export async function db(){const url=process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_ANON_KEY||process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;if(!url||!key)throw new AppError('Supabase is not configured. Add the project URL and public key in your environment settings.',503,'not_configured');const c=await cookies();return createServerClient(url,key,{cookies:{getAll:()=>c.getAll(),setAll:items=>{for(const i of items)c.set(i.name,i.value,i.options)}}})}
-export async function context(){const client=await db();const {data:{user}}=await client.auth.getUser();if(!user)throw new AppError('Sign in to continue.',401,'unauthorized');return {db:client,user}}
+export async function db(){const url=process.env.SUPABASE_URL||process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_ANON_KEY||process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;if(!url||!key)throw new AppError('Supabase is not configured. Add the project URL and public key in your environment settings.',503,'not_configured');const c=await cookies();return createServerClient(url,key,{cookies:{getAll:()=>c.getAll(),setAll:items=>{try{for(const i of items)c.set(i.name,i.value,i.options)}catch{}}}})}
+export async function context(){const client=await db();const {data:{user},error}=await client.auth.getUser();if(!user||error)throw new AppError('Sign in to continue.',401,'unauthorized');return {db:client,user}}
 export function check<T>(r:{data:T;error:unknown}){if(r.error)throw new AppError('Database operation failed. Check migrations and permissions.',500);return r.data as NonNullable<T>}
 export type AIConfig={url:string;key:string;model:string};
 export function builtinAI():AIConfig{return {url:BUILTIN_AI.url,key:BUILTIN_AI.key,model:BUILTIN_AI.model}}

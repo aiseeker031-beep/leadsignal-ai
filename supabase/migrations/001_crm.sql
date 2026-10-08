@@ -4,7 +4,12 @@ create table if not exists crm_workspace(
   data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
 alter table crm_workspace enable row level security;
+
 drop policy if exists owner on crm_workspace;
 create policy owner on crm_workspace for all to authenticated
   using(user_id=auth.uid()) with check(user_id=auth.uid());
+
+grant all on table crm_workspace to authenticated;
+grant all on table crm_workspace to service_role;

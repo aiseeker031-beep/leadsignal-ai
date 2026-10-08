@@ -8,7 +8,7 @@ const emptyForm={firstName:'',lastName:'',email:'',phone:'',company:'',tags:'',s
 export default function ContactsView({pushNotice}:{pushNotice:(m:string)=>void}){
  const {db,set}=useCrm();
  const router=useRouter(),sp=useSearchParams();
- const [q,setQ]=useState(''),[smart,setSmart]=useState('all'),[open,setOpen]=useState<Contact|Row|null>(null),[adding,setAdding]=useState(false),[fields,setFields]=useState(false),[form,setForm]=useState<Row>(emptyForm),[note,setNote]=useState('');
+ const [q,setQ]=useState(''),[smart,setSmart]=useState('all'),[open,setOpen]=useState<Contact|Row|null>(null),[adding,setAdding]=useState(false),[fields,setFields]=useState(false),[form,setForm]=useState<Row>(emptyForm),[note,setNote]=useState(''),[noteType,setNoteType]=useState<Contact['notes'][0]['type']>('note');
  useEffect(()=>{const id=sp.get('open');if(id){const c=db.contacts.find(x=>x.id===id);if(c)setOpen(c)}},[sp,db.contacts]);
  const smartLists:[string,string,(c:Contact)=>boolean][]=[
   ['all','All contacts',()=>true],
@@ -61,7 +61,7 @@ export default function ContactsView({pushNotice}:{pushNotice:(m:string)=>void})
        <div className="start-conv"><select aria-label="Channel" defaultValue="sms" id={'conv-ch-'+detail.id}>{['sms','email','whatsapp','instagram','facebook'].map(c=><option key={c}>{c}</option>)}</select><button className="button outline" onClick={()=>{const sel=document.getElementById('conv-ch-'+detail.id) as HTMLSelectElement;startConversation(detail.id,sel.value)}}><MessageSquare size={14}/>New conversation</button></div>
       </div>
      </div>}
-     <div className="detail-block"><h3>Log interaction</h3><Field label="Type"><select value="" onChange={e=>{const t=e.target.value as Contact['notes'][0]['type'];if(t){addNote(t);e.target.value=''}}}><option value="">Choose…</option>{['note','call','sms','email','meeting'].map(t=><option key={t}>{t}</option>)}</select></Field><Field label="What happened?"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Call summary, message sent, meeting outcome…"/></Field><button className="button outline" onClick={()=>addNote('note')}>Add to history</button></div>
+     <div className="detail-block"><h3>Log interaction</h3><Field label="Type"><select value={noteType} onChange={e=>setNoteType(e.target.value as any)}>{['note','call','sms','email','meeting'].map(t=><option key={t} value={t}>{t.toUpperCase()}</option>)}</select></Field><Field label="What happened?"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Call summary, message sent, meeting outcome…"/></Field><div style={{display:'flex',gap:10}}><button className="button outline" onClick={()=>addNote(noteType)}>Add to history</button><button className="button ghost" style={{color:'#b9757f',marginLeft:'auto'}} onClick={()=>{set(d=>d.contacts=d.contacts.filter(x=>x.id!==detail.id));setOpen(null);pushNotice('Contact deleted.')}}>Delete contact</button></div></div>
     </div>
     <div className="detail-block"><h3>Interaction history</h3>{detail.notes.length?<Timeline items={detail.notes}/>:<p className="muted">No interactions logged yet.</p>}</div>
    </div></Modal>}
