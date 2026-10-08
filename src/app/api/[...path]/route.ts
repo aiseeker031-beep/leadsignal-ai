@@ -4,7 +4,7 @@ import {NextRequest,NextResponse} from 'next/server';import {z} from 'zod';impor
 export const runtime='nodejs';export const maxDuration=300;
 const chatLimits=new Map<string,{until:number;count:number}>();
 function limitChat(req:NextRequest){const now=Date.now();for(const [k,v] of chatLimits)if(v.until<now)chatLimits.delete(k);const ip=req.headers.get('x-real-ip')||req.headers.get('x-forwarded-for')||'unknown';const key=createHash('sha256').update(ip).digest('hex');const v=chatLimits.get(key)||{until:now+60000,count:0};if(v.count>=12||chatLimits.size>10000)throw new AppError('Please wait a minute before sending another message.',429);v.count++;chatLimits.set(key,v);}
-function proxyOrigin(req:NextRequest){const host=(req.headers.get('x-forwarded-host')||req.headers.get('host')||'').split(',')[0].trim();if(!host)return req.nextUrl.origin;const proto=(req.headers.get('x-forwarded-proto')||(host.startsWith('localhost')?'http':'https')).split(',')[0].trim();return `${proto}://${host}`;}
+function proxyOrigin(req:NextRequest){const host=(req.headers.get('x-forwarded-host')||req.headers.get('host')||'').split(',')[0].trim();if(!host)return req.nextUrl.origin;const proto=host.startsWith('localhost')?'http':'https';return `${proto}://${host}`;}
 function sameOrigin(req:NextRequest){
  if(req.method==='GET')return true;
  const origin=req.headers.get('origin');if(!origin)return true;
