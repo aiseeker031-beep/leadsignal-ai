@@ -1,0 +1,1 @@
+import Workspace from '@/components/workspace';import {redirect} from 'next/navigation';export default async function Page({params}:{params:Promise<{view?:string[]}>}){const view=(await params).view?.[0]||'dashboard';if(view==='integrations')redirect('/settings');return <Workspace view={view}/>}
