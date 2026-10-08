@@ -147,6 +147,27 @@ export default function Workspace({view}:{view:string}){
     }
   }
 
+  async function instantAccess(){
+    setAuthBusy(true);
+    setNotice('');
+    try{
+      const r=await fetch('/api/auth',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({mode:'instant'})
+      });
+      const j=await r.json();
+      if(!r.ok)throw new Error(j.error||'Failed to create instant workspace.');
+      setAuth(false);
+      window.location.reload();
+    }catch(err){
+      setFailure(true);
+      setNotice((err as Error).message);
+    }finally{
+      setAuthBusy(false);
+    }
+  }
+
   const title=nav.find(n=>n[0]===view)?.[1]||'Contacts';
   const email=crm.userEmail;
   const needsAuth=!email;
@@ -317,10 +338,20 @@ export default function Workspace({view}:{view:string}){
 
             <button
               type="button"
+              className="button primary"
+              disabled={authBusy||!health?.database}
+              onClick={instantAccess}
+              style={{width:'100%',justifyContent:'center',padding:'12px 18px',fontSize:14,fontWeight:600,gap:8,margin:'16px 0 10px'}}
+            >
+              <Sparkles size={16}/>1-Click Instant Workspace Access
+            </button>
+
+            <button
+              type="button"
               className="button outline google-btn"
               disabled={authBusy||!health?.database}
               onClick={google}
-              style={{width:'100%',justifyContent:'center',padding:'12px 18px',fontSize:14,fontWeight:600,gap:10,margin:'16px 0 20px'}}
+              style={{width:'100%',justifyContent:'center',padding:'12px 18px',fontSize:14,fontWeight:600,gap:10,margin:'0 0 16px'}}
             >
               <GoogleIcon/>Continue with Google
             </button>

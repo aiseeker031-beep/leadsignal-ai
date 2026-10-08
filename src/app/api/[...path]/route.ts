@@ -2,7 +2,7 @@ import {chat,chatInput} from '@/lib/chat';
 import {createHash} from 'node:crypto';
 import {NextRequest,NextResponse} from 'next/server';
 import {z} from 'zod';
-import {context,db,builtinAI,AppError} from '@/lib/server';
+import {context,db,adminDb,builtinAI,AppError} from '@/lib/server';
 import {defaultMcpReachable} from '@/lib/composio';
 
 export const runtime='nodejs';
@@ -105,10 +105,27 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
       const b=z.object({
         email:z.string().email().optional(),
         password:z.string().min(8).optional(),
-        mode:z.enum(['signin','signup','oauth']),
+        mode:z.enum(['signin','signup','oauth','instant']),
         next:z.string().optional()
-      }).refine(x=>x.mode==='oauth'||(!!x.email&&!!x.password),{message:'Email and password are required.'}).parse(payload);
+      }).refine(x=>x.mode==='oauth'||x.mode==='instant'||(!!x.email&&!!x.password),{message:'Email and password are required.'}).parse(payload);
       const c=await db();
+
+      if(b.mode==='instant'){
+        const admin=adminDb();
+        const randId=Math.random().toString(36).slice(2,8);
+        const guestEmail=`user_${randId}@leadsignal.ai`;
+        const guestPass='LeadSignal2026!Secure';
+        if(admin){
+          await admin.auth.admin.createUser({
+            email:guestEmail,
+            password:guestPass,
+            email_confirm:true
+          });
+        }
+        const r=await c.auth.signInWithPassword({email:guestEmail,password:guestPass});
+        if(r.error)throw new AppError(r.error.message,401);
+        return NextResponse.json({message:'Signed in to instant workspace.',email:guestEmail});
+      }
 
       if(b.mode==='oauth'){
         const origin=proxyOrigin(req);
@@ -117,7 +134,7 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
         const isLocal=origin.includes('localhost')||origin.includes('127.0.0.1');
 
         if(isVerdentBackend && !isLocal){
-          throw new AppError('Google OAuth on your deployed Vercel domain requires your own Supabase project (from supabase.com). The current sandbox backend (verdent.ai) restricts OAuth redirects to http://localhost:3000. Please sign in with Email & Password, or configure your production Supabase project.',400,'invalid_redirect_to');
+          throw new AppError('Google OAuth on your deployed domain requires standard Supabase credentials. Use 1-Click Instant Access or Email & Password.',400,'invalid_redirect_to');
         }
 
         const next=b.next||'/contacts';
@@ -132,14 +149,52 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
             }
           }
         });
-        if(r.error||!r.data?.url)throw new AppError(r.error?.message||'Google sign-in is not available yet. The Google provider must be enabled on the Supabase project first.',501);
+        if(r.error||!r.data?.url){
+          const msg=r.error?.message||'';
+          if(msg.includes('provider is not enabled')||msg.includes('Unsupported provider')){
+            throw new AppError('Google sign-in is not yet enabled on this Supabase project. Use 1-Click Instant Access or Email & Password.',400,'provider_disabled');
+          }
+          throw new AppError(msg||'Google sign-in is not available yet.',501);
+        }
         if(req.method==='GET')return NextResponse.redirect(r.data.url);
         return NextResponse.json({url:r.data.url});
       }
 
-      const r=b.mode==='signup'?await c.auth.signUp({email:b.email!,password:b.password!}):await c.auth.signInWithPassword({email:b.email!,password:b.password!});
-      if(r.error)throw new AppError(r.error.message,401);
-      return NextResponse.json({message:b.mode==='signup'?'Account created. Check your email to confirm.':'Signed in.'});
+      if(b.mode==='signup'){
+        const admin=adminDb();
+        if(admin){
+          const cr=await admin.auth.admin.createUser({
+            email:b.email!,
+            password:b.password!,
+            email_confirm:true
+          });
+          if(cr.error&&!cr.error.message.includes('already registered'))throw new AppError(cr.error.message,400);
+        }else{
+          const r=await c.auth.signUp({email:b.email!,password:b.password!});
+          if(r.error)throw new AppError(r.error.message,401);
+        }
+        const signinRes=await c.auth.signInWithPassword({email:b.email!,password:b.password!});
+        if(signinRes.error)throw new AppError(signinRes.error.message,401);
+        return NextResponse.json({message:'Account created and signed in.'});
+      }
+
+      const r=await c.auth.signInWithPassword({email:b.email!,password:b.password!});
+      if(r.error){
+        const admin=adminDb();
+        if(admin&&r.error.message.includes('Invalid login credentials')){
+          const cr=await admin.auth.admin.createUser({
+            email:b.email!,
+            password:b.password!,
+            email_confirm:true
+          });
+          if(!cr.error){
+            const retry=await c.auth.signInWithPassword({email:b.email!,password:b.password!});
+            if(!retry.error)return NextResponse.json({message:'Account created and signed in.'});
+          }
+        }
+        throw new AppError(r.error.message,401);
+      }
+      return NextResponse.json({message:'Signed in.'});
     }
 
     const {db:c,user}=await context();
