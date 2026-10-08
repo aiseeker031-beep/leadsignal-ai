@@ -86,12 +86,28 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
     }
 
     if(path==='auth'){
+      let payload:Record<string,any>={};
+      if(req.method==='GET'){
+        const sp=req.nextUrl.searchParams;
+        payload={
+          email:sp.get('email')||undefined,
+          password:sp.get('password')||undefined,
+          mode:sp.get('mode')||(sp.get('provider')==='google'?'oauth':undefined),
+          next:sp.get('next')||undefined
+        };
+      }else{
+        try{
+          payload=await req.json();
+        }catch{
+          payload={};
+        }
+      }
       const b=z.object({
         email:z.string().email().optional(),
         password:z.string().min(8).optional(),
         mode:z.enum(['signin','signup','oauth']),
         next:z.string().optional()
-      }).refine(x=>x.mode==='oauth'||(!!x.email&&!!x.password),{message:'Email and password are required.'}).parse(await req.json());
+      }).refine(x=>x.mode==='oauth'||(!!x.email&&!!x.password),{message:'Email and password are required.'}).parse(payload);
       const c=await db();
 
       if(b.mode==='oauth'){
@@ -108,6 +124,7 @@ async function handler(req:NextRequest,{params}:{params:Promise<{path:string[]}>
           }
         });
         if(r.error||!r.data?.url)throw new AppError(r.error?.message||'Google sign-in is not available yet. The Google provider must be enabled on the Supabase project first.',501);
+        if(req.method==='GET')return NextResponse.redirect(r.data.url);
         return NextResponse.json({url:r.data.url});
       }
 
